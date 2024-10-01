@@ -3,3 +3,9 @@ members = [
     "xengine_test",
     "xengine"
 ]
+
+[profile.release]
+lto = true
+opt-level = 1
+codegen-units = 1
+strip = "debuginfo"

@@ -1,29 +1,53 @@
-use std::arch::asm;
+use std::{arch::asm, fmt::format};
 
-use xengine::{xanti_dbg, xstr, xtrash};
+use xengine::{xanti_dbg, xfn, xfn_add, xfn_get, xfn_init, xstr, xtrash};
+
+#[inline(never)]
+fn xprint_text(text: &str) {
+    xtrash!(2);
+    xanti_dbg!({
+        xtrash!(2);
+        println!("{}", text);
+        xtrash!(2);
+    });
+    xtrash!(2);
+}
+
+#[inline(never)]
+fn xinput_text() -> String {
+    xtrash!(2);
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    xtrash!(2);
+    input
+}
+
+#[inline(never)]
+fn xcompare(a: &str, b: &str) -> bool {
+    xtrash!(2);
+    let mut value: bool = false;
+    xanti_dbg!({
+        xtrash!(2);
+        if a == b {
+            value = true;
+        }
+        xtrash!(2);
+    });
+    xtrash!(2);
+    value
+}
 
 fn main() {
-    xtrash!(32);
-    xanti_dbg!({
-        println!("{}", xstr!("Enter password: "));
-    });
-    xtrash!(4);
-    let mut password = String::new();
-    std::io::stdin().read_line(&mut password).unwrap();
-    xtrash!(4);
-    xanti_dbg!({
-        xtrash!(4);
-        if password == xstr!("rust") {
-            xtrash!(4);
-            println!("{}", xstr!("Access granted"));
-        } else {
-            xtrash!(4);
-            println!("{}", xstr!("Access denied"));
-        }
-        xtrash!(4);
-    });
-    xtrash!(16);
-    let mut tmp = String::new();
-    std::io::stdin().read_line(&mut tmp).unwrap();
-    xtrash!(16);
-}
+    let o_xprint_text: fn(text: &str) = xfn!(xprint_text);
+    let o_xinput_text: fn() -> String = xfn!(xinput_text);
+    let o_xcompare: fn(a: &str, b: &str) -> bool = xfn!(xcompare);
+
+    o_xprint_text(xstr!("Enter password: ").as_str());
+    let input = o_xinput_text();
+    
+    if o_xcompare(xstr!("ReadConsoleA").as_str(), input.as_str()) {
+        o_xprint_text(xstr!("Success!").as_str());
+    } else {
+        o_xprint_text(xstr!("Failed!").as_str());
+    }
+}   

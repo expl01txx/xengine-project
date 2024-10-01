@@ -1,5 +1,7 @@
+use std::process::Output;
+
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use rand::Rng;
 use syn::{parse_macro_input, Expr,LitInt, LitStr};
 
@@ -33,27 +35,67 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
     // Get the number of times to repeat
     let repeat_count: usize = repeat_count.base10_parse().expect("Failed to parse integer");
 
+    let mut rng = rand::thread_rng();
+
 
     // Generate the repeated print statements
     let mut repeated_code = quote! {};
 
     for _ in 0..repeat_count {
-        repeated_code.extend(quote! {
-            unsafe {
-                asm!(
-                    "2:",
-                    "cmp rax, 0xEE",
-                    "je 2b",
-                    "cmp rbx, 0xAA",
-                    "je 2b",
-                    "cmp rax, 0",
-                    "je 3f",
-                    "cmp rax, 0xAA",
-                    "4: je 4b",
-                    "3:"
-                );
-            };
-        });
+        let random_inst = rng.gen_range(0..=2);
+
+        match random_inst {
+            0 => {
+                repeated_code.extend(quote! {
+                    unsafe {
+                        asm!(
+                            "cmp rax, 0x1488",
+                            "jne 2f",
+                            "jmp rax",
+                            "2:"
+                        );
+                    };
+                });
+            }
+            1 => {
+                repeated_code.extend(quote! {
+                    let code: Vec<u8> = vec![
+                        0xFF, 0xEE, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04,
+                    ];
+                
+                    let code_ptr = code.as_ptr();
+                
+                    unsafe {
+                        asm!(
+                            "mov rax, {}",
+                            in(reg) code_ptr,
+                        );
+                        asm!(
+                            "cmp rax, 0x13EF",
+                            "jne 2f",
+                            "jmp rax",
+                            "2:",
+                        );
+                    }
+                
+                });
+            },
+            2 => {
+                repeated_code.extend(quote! {
+                    unsafe {
+                    asm!{
+                        "2:",
+                        "cmp rax, 0x78F",
+                        "je 2b"
+                    };
+                    };
+                
+                });
+            },
+            _ => {
+                panic!("Invalid instruction");
+            }
+        }
     }
 
     TokenStream::from(repeated_code)
@@ -84,10 +126,83 @@ pub fn xanti_dbg(input: TokenStream) -> TokenStream {
             xtrash!(4);
 
             if new_time - current_time > 10 {
-                std::process::exit(0);
+                let code: Vec<u8> = vec![
+                    0xFF, 0xEE, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04,
+                ];
+            
+                let code_ptr = code.as_ptr();
+            
+                unsafe {
+                    asm!(
+                        "mov rax, {}",
+                        "jmp rax",
+                        in(reg) code_ptr,
+                    );
+                }
             }
             xtrash!(4);
         }
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn xfn_init(input: TokenStream) -> TokenStream {
+
+    let output = quote!{
+        
+            let mut xfn_list: Vec<usize> = Vec::new();
+        
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn xfn_add(input: TokenStream) -> TokenStream {
+    //parse name: String and fn: usize
+    let input_data = parse_macro_input!(input as Expr);
+
+    let output = quote!{
+        
+            xfn_list.push(#input_data as usize);
+        
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn xfn_get(input: TokenStream) -> TokenStream {
+    //parse name: String and fn: usize
+    let input_data = parse_macro_input!(input as LitInt);
+    
+    let output = quote!{
+        
+            unsafe { std::mem::transmute(xfn_list[#input_data]) }
+        
+    };
+
+    TokenStream::from(output)
+
+}
+
+#[proc_macro]
+pub fn xfn(input: TokenStream) -> TokenStream {
+    //parse name: String and fn: usize
+    let input_data = parse_macro_input!(input as Expr);
+    
+    let output = quote!{
+        {
+            xtrash!(1);
+            xfn_init!();
+            xtrash!(1);
+            xfn_add!(#input_data as usize);
+            xtrash!(1);
+            xfn_get!(0)
+        }
+        
     };
 
     TokenStream::from(output)
