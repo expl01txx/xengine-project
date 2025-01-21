@@ -6,6 +6,6 @@ members = [
 
 [profile.release]
 lto = true
-opt-level = 1
-codegen-units = 1
-strip = "debuginfo"
+debug = "none"
+strip = true
+opt-level = 'z'

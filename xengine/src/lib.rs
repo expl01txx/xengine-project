@@ -42,7 +42,7 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
     let mut repeated_code = quote! {};
 
     for _ in 0..repeat_count {
-        let random_inst = rng.gen_range(0..=2);
+        let random_inst = rng.gen_range(0..=3);
 
         match random_inst {
             0 => {
@@ -92,6 +92,42 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 
                 });
             },
+            3 => {
+                repeated_code.extend(quote! {
+                    let code: Vec<u8> = vec![
+                        0xFF, 0xEE, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04,
+                    ];
+                
+                    let code_ptr = code.as_ptr();
+                    unsafe {
+                        asm!{
+                            "cmp r10, 0xaaff
+                            ",
+                            "jne 2f",
+                            "int3",
+                            "push {0}",
+                            "ret",
+                            "2:",
+                            in(reg) code_ptr,
+                        };
+                    };
+                
+                });
+            },
+            3 => {
+                repeated_code.extend(quote! {
+                    unsafe {
+                        asm!{
+                            "cmp r10, 0xaaff
+                            ",
+                            "jne 2f",
+                            "int3",
+                            "2:",
+                        };
+                    };
+                
+                });
+            },
             _ => {
                 panic!("Invalid instruction");
             }
@@ -123,7 +159,6 @@ pub fn xanti_dbg(input: TokenStream) -> TokenStream {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-            xtrash!(4);
 
             if new_time - current_time > 10 {
                 let code: Vec<u8> = vec![
