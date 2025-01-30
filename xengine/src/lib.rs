@@ -3,7 +3,7 @@ use std::process::Output;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use rand::Rng;
-use syn::{parse_macro_input, Expr,LitInt, LitStr};
+use syn::{parse_macro_input, parse_quote, AttributeArgs, Expr, ItemFn, LitInt, LitStr, Stmt};
 
 #[proc_macro]
 pub fn xstr(input: TokenStream) -> TokenStream {
@@ -42,7 +42,7 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
     let mut repeated_code = quote! {};
 
     for _ in 0..repeat_count {
-        let random_inst = rng.gen_range(0..=3);
+        let random_inst = rng.gen_range(0..=4);
 
         match random_inst {
             0 => {
@@ -114,12 +114,11 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 
                 });
             },
-            3 => {
+            4 => {
                 repeated_code.extend(quote! {
                     unsafe {
                         asm!{
-                            "cmp r10, 0xaaff
-                            ",
+                            "cmp r10, 0xaaff",
                             "jne 2f",
                             "int3",
                             "2:",
@@ -182,63 +181,49 @@ pub fn xanti_dbg(input: TokenStream) -> TokenStream {
     TokenStream::from(output)
 }
 
-#[proc_macro]
-pub fn xfn_init(input: TokenStream) -> TokenStream {
 
-    let output = quote!{
-        
-            let mut xfn_list: Vec<usize> = Vec::new();
-        
+#[proc_macro_attribute]
+pub fn xfn(attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Parse the attribute arguments (e.g., `#[xfn(4)]`)
+    let attr_args = parse_macro_input!(attr as AttributeArgs);
+    let trash_amount: usize = match attr_args.as_slice() {
+        [syn::NestedMeta::Lit(syn::Lit::Int(lit))] => lit.base10_parse().unwrap(),
+        _ => panic!("Expected a single integer argument, e.g., #[xfn(4)]"),
     };
 
-    TokenStream::from(output)
-}
+    // Parse the input function
+    let input_fn = parse_macro_input!(item as ItemFn);
+    let vis = input_fn.vis;
+    let sig = input_fn.sig;
 
-#[proc_macro]
-pub fn xfn_add(input: TokenStream) -> TokenStream {
-    //parse name: String and fn: usize
-    let input_data = parse_macro_input!(input as Expr);
+    // Extract the function body (block)
+    let mut block = input_fn.block;
 
-    let output = quote!{
-        
-            xfn_list.push(#input_data as usize);
-        
+    // Modify the body by adding `xtrash!(amount)` before each statement
+    let modified_stmts: Vec<syn::Stmt> = block
+        .stmts
+        .into_iter()
+        .flat_map(|stmt| {
+            let xtrash_stmt = {
+                let amount = trash_amount; // Use the parsed amount here
+                quote! {
+                    {
+                        use std::arch::asm;
+                        xtrash!(#amount);
+                    }
+                }
+            };
+            vec![syn::parse2(xtrash_stmt).unwrap(), stmt] // Insert `xtrash!(amount)` before the original statement
+        })
+        .collect();
+
+    // Replace the original statements with the modified ones
+    block.stmts = modified_stmts;
+
+    // Generate the output function with the modified body
+    let output = quote! {
+        #vis #sig #block
     };
 
-    TokenStream::from(output)
-}
-
-#[proc_macro]
-pub fn xfn_get(input: TokenStream) -> TokenStream {
-    //parse name: String and fn: usize
-    let input_data = parse_macro_input!(input as LitInt);
-    
-    let output = quote!{
-        
-            unsafe { std::mem::transmute(xfn_list[#input_data]) }
-        
-    };
-
-    TokenStream::from(output)
-
-}
-
-#[proc_macro]
-pub fn xfn(input: TokenStream) -> TokenStream {
-    //parse name: String and fn: usize
-    let input_data = parse_macro_input!(input as Expr);
-    
-    let output = quote!{
-        {
-            xtrash!(1);
-            xfn_init!();
-            xtrash!(1);
-            xfn_add!(#input_data as usize);
-            xtrash!(1);
-            xfn_get!(0)
-        }
-        
-    };
-
-    TokenStream::from(output)
+    output.into()
 }
