@@ -1,8 +1,8 @@
-use std::process::Output;
+use std::{fs, process::Output};
 
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use rand::Rng;
+use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 use syn::{parse_macro_input, parse_quote, AttributeArgs, Expr, ItemFn, LitInt, LitStr, Stmt};
 
 #[proc_macro]
@@ -27,6 +27,15 @@ pub fn xstr(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+fn generate_random_string(len: usize) -> String {
+    let s: String = rand::thread_rng()
+    .sample_iter(&Alphanumeric)
+    .take(len)
+    .map(char::from)
+    .collect();
+    "LABEL_".to_owned() + &s
+}
+
 #[proc_macro]
 pub fn xtrash(input: TokenStream) -> TokenStream {
     // Parse the input as an integer literal
@@ -36,6 +45,8 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
     let repeat_count: usize = repeat_count.base10_parse().expect("Failed to parse integer");
 
     let mut rng = rand::thread_rng();
+    let mut labels_vec: Vec<String> = Vec::new();
+
 
 
     // Generate the repeated print statements
@@ -46,16 +57,20 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
 
         match random_inst {
             0 => {
+                let label_name = generate_random_string(32);
                 repeated_code.extend(quote! {
                     unsafe {
                         asm!(
                             "cmp rax, 0x1488",
                             "jne 2f",
+                            concat!(stringify!(#label_name), ":"),
                             "jmp rax",
                             "2:"
+
                         );
                     };
                 });
+                labels_vec.push(label_name);
             }
             1 => {
                 repeated_code.extend(quote! {
@@ -74,7 +89,7 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                             "cmp rax, 0x13EF",
                             "jne 2f",
                             "jmp rax",
-                            "2:",
+                            "2:"
                         );
                     }
                 
@@ -93,7 +108,9 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 });
             },
             3 => {
+                let label_name = generate_random_string(32);
                 repeated_code.extend(quote! {
+    
                     let code: Vec<u8> = vec![
                         0xFF, 0xEE, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04,
                     ];
@@ -101,9 +118,9 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                     let code_ptr = code.as_ptr();
                     unsafe {
                         asm!{
-                            "cmp r10, 0xaaff
-                            ",
+                            "cmp r10, 0xaaff",
                             "jne 2f",
+                            concat!(stringify!(#label_name), ":"),
                             "int3",
                             "push {0}",
                             "ret",
@@ -113,14 +130,21 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                     };
                 
                 });
+                labels_vec.push(label_name);
             },
             4 => {
+                if labels_vec.is_empty() {
+                    continue;
+                }
+                let existed_label = labels_vec.choose(&mut rng).unwrap();
+                let cmd = "jmp ".to_string() + existed_label;
                 repeated_code.extend(quote! {
+
                     unsafe {
                         asm!{
                             "cmp r10, 0xaaff",
                             "jne 2f",
-                            "int3",
+                            #cmd,
                             "2:",
                         };
                     };
@@ -181,6 +205,44 @@ pub fn xanti_dbg(input: TokenStream) -> TokenStream {
     TokenStream::from(output)
 }
 
+#[proc_macro]
+pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
+    
+    // Parse the input as a string literal
+    let input = parse_macro_input!(input as LitStr);
+    let path = input.value();
+    
+    // Read the file at compile time
+    let bytes = match fs::read(format!("src/{}", &path)) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return syn::Error::new(
+                input.span(),
+                format!("Failed to read file '{}': {}", path, e)
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    
+    // Convert the byte vector into a byte array expression
+    let mut rng = rand::thread_rng();
+    let key = rng.gen_range(0x10..=0xEE);
+    let bytes: Vec<u8> = bytes.iter().map(|c| (*c as u8 ^ key) as u8).collect();
+    let bytes = bytes.as_slice();
+    let bytes_lit = syn::LitByteStr::new(&bytes, input.span());
+    
+    // Generate the output code
+    let expanded = quote! {
+        {
+            let encrypted = #bytes_lit;
+            let bytes: Vec<u8> = encrypted.iter().map(|c| (*c as u8 ^ #key) as u8).collect();
+            bytes.as_slice()
+        }
+    };
+    
+    TokenStream::from(expanded)
+}
 
 #[proc_macro_attribute]
 pub fn xfn(attr: TokenStream, item: TokenStream) -> TokenStream {
