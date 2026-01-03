@@ -1,9 +1,15 @@
-use std::{fs, process::Output};
+use std::{collections::HashMap, fs, process::Output, sync::OnceLock};
 
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
+use rand::{Rng, distributions::Alphanumeric, seq::{IteratorRandom, SliceRandom}};
 use syn::{parse_macro_input, parse_quote, AttributeArgs, Expr, ItemFn, LitInt, LitStr, Stmt};
+
+static LABELS_VEC: OnceLock<std::sync::Mutex<Vec<String>>> = OnceLock::new();
+
+fn get_labels_vec() -> &'static std::sync::Mutex<Vec<String>> {
+    LABELS_VEC.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
 
 #[proc_macro]
 pub fn xstr(input: TokenStream) -> TokenStream {
@@ -36,8 +42,22 @@ fn generate_random_string(len: usize) -> String {
     "LABEL_".to_owned() + &s
 }
 
+fn get_random_label() -> Option<String> {
+    let labels_vec = get_labels_vec().lock().unwrap();
+    
+    if labels_vec.is_empty() {
+        return None;
+    }
+    
+    let mut rng = rand::thread_rng();
+    let random_index = rng.gen_range(0..labels_vec.len());
+    
+    Some(labels_vec[random_index].clone())
+}
+
 #[proc_macro]
 pub fn xtrash(input: TokenStream) -> TokenStream {
+    
     // Parse the input as an integer literal
     let repeat_count = parse_macro_input!(input as LitInt);
 
@@ -45,19 +65,19 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
     let repeat_count: usize = repeat_count.base10_parse().expect("Failed to parse integer");
 
     let mut rng = rand::thread_rng();
-    let mut labels_vec: Vec<String> = Vec::new();
-
-
 
     // Generate the repeated print statements
     let mut repeated_code = quote! {};
 
     for _ in 0..repeat_count {
-        let random_inst = rng.gen_range(0..=4);
 
+        let rnd_label = get_random_label();
+        let mut labels_vec = get_labels_vec().lock().unwrap();
+
+        let random_inst = rng.gen_range(0..=4);
         match random_inst {
             0 => {
-                let label_name = generate_random_string(32);
+                let label_name = generate_random_string(8) + &labels_vec.len().to_string();
                 repeated_code.extend(quote! {
                     unsafe {
                         asm!(
@@ -96,19 +116,22 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 });
             },
             2 => {
+                let cmd = "je ".to_string() + &rnd_label.unwrap();
                 repeated_code.extend(quote! {
                     unsafe {
                     asm!{
                         "2:",
                         "cmp rax, 0x78F",
-                        "je 2b"
+                        "je 2b",
+                        "cmp rax, 0x1F0402F",
+                        #cmd
                     };
                     };
-                
                 });
             },
             3 => {
-                let label_name = generate_random_string(32);
+                let cmd = "jmp ".to_string() + &rnd_label.unwrap();
+                let label_name = generate_random_string(8) + &labels_vec.len().to_string();
                 repeated_code.extend(quote! {
     
                     let code: Vec<u8> = vec![
@@ -121,6 +144,7 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                             "cmp r10, 0xaaff",
                             "jne 2f",
                             concat!(stringify!(#label_name), ":"),
+                            #cmd,
                             "int3",
                             "push {0}",
                             "ret",
@@ -133,11 +157,10 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 labels_vec.push(label_name);
             },
             4 => {
-                if labels_vec.is_empty() {
+                if rnd_label.as_ref().is_none() {
                     continue;
                 }
-                let existed_label = labels_vec.choose(&mut rng).unwrap();
-                let cmd = "jmp ".to_string() + existed_label;
+                let cmd = "jmp ".to_string() + &rnd_label.unwrap();
                 repeated_code.extend(quote! {
 
                     unsafe {

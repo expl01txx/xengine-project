@@ -1,15 +1,16 @@
-# Simple rustlang obfuscation library based on proc-macro and inline assembly for x86_64
+# Rustlang obfuscation library based on proc-macro and inline assembly for x86_64
 
-### Example:
+### Exampl usage:
 ```rust
+use xengine::*;
+
 #[xfn(64)]
 fn main() {
     println!("{}", xstr!("Enter the password:"));
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read line");
+    std::io::stdin().read_line(&mut input).expect("Failed to read line");
 
-    // Remove any trailing newline characters
     let input = input.trim();
 
     let correct_password = &xstr!("rust");
@@ -19,6 +20,6 @@ fn main() {
     } else {
         println!("{}", xstr!("Incorrect!"));
     }
-    exit(0);
-}   
+    std::process::exit(0);
+}  
 ```

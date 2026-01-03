@@ -1,11 +1,13 @@
-[workspace]
-members = [
-    "xengine_test",
-    "xengine"
-]
+[package]
+name = "xengine"
+version = "0.3.0"
+edition = "2021"
 
-[profile.release]
-lto = true
-debug = "none"
-strip = true
-opt-level = 'z'
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version="1.0", features=["full"] } 
+quote = "1.0"
+proc-macro2 = "1.0"
+rand = "0.8"
