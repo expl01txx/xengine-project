@@ -67,6 +67,24 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
 
         let rnd_label = get_random_label();
         let mut labels_vec = get_labels_vec().lock().unwrap();
+        if rnd_label.is_none() {
+            let label_name = generate_random_string(8) + &labels_vec.len().to_string();
+            repeated_code.extend(quote! {
+                unsafe {
+                    asm!(
+                        "cmp rax, 0x7432",
+                        "jne 2f",
+                        concat!(".global ", #label_name, "\n", #label_name, ":"),
+                        "add rax, 0x10",
+                        "jmp rax",
+                        "2:"
+
+                    );
+                };
+            });
+            labels_vec.push(label_name);
+            continue;
+        }
 
         let random_inst = rng.gen_range(0..=4);
         match random_inst {
@@ -75,9 +93,10 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 repeated_code.extend(quote! {
                     unsafe {
                         asm!(
-                            "cmp rax, 0x1488",
+                            "cmp rax, 0x1488ffcc",
                             "jne 2f",
                             concat!(stringify!(#label_name), ":"),
+                            "int3",
                             "jmp rax",
                             "2:"
 
@@ -137,7 +156,7 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                         asm!{
                             "cmp r10, 0xaaff",
                             "jne 2f",
-                            concat!(stringify!(#label_name), ":"),
+                            concat!(".global ", #label_name, "\n", #label_name, ":"),
                             #cmd,
                             "int3",
                             "push {0}",
@@ -151,9 +170,6 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                 labels_vec.push(label_name);
             },
             4 => {
-                if rnd_label.as_ref().is_none() {
-                    continue;
-                }
                 let cmd = "jmp ".to_string() + &rnd_label.unwrap();
                 repeated_code.extend(quote! {
 
@@ -247,7 +263,7 @@ pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
         {
             let encrypted = #bytes_lit;
             let bytes: Vec<u8> = encrypted.iter().map(|c| (*c as u8 ^ #key) as u8).collect();
-            bytes.as_slice()
+            bytes
         }
     };
     

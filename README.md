@@ -27,3 +27,13 @@ fn main() {
     std::process::exit(0);
 }  
 ```
+
+### Warning! For stable and correct operation of this library, it is necessary to set the value of codegen-units to 1
+
+```toml
+[profile.release]
+codegen-units = 1
+
+[profile.dev]
+codegen-units = 1
+```
