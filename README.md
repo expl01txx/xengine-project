@@ -1,5 +1,9 @@
-# Rustlang obfuscation library based on proc-macro and inline assembly for x86_64
-
+# Rustlang obfuscation toolkit based on proc-macro and inline assembly for x86_64
+## Features:
+* Heavy flow obfuscation with customizable settings
+* String encryption
+* include_bytes drop-in replacement with encryption
+* Time-based anti debugger
 ### Exampl usage:
 ```rust
 use xengine::*;
