@@ -16,12 +16,10 @@ pub fn xstr(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitStr);
     let plain_text = input.value();
 
-    // Simple XOR encryption with a fixed key
     let mut rng = rand::thread_rng();
     let key = rng.gen_range(0x10..=0xEE);
     let encrypted: String = plain_text.chars().map(|c| (c as u8 ^ key) as char).collect();
 
-    // Generate the decryption code
     let expanded = quote! {
         {
             const ENCRYPTED: &'static str = #encrypted;
@@ -57,16 +55,12 @@ fn get_random_label() -> Option<String> {
 
 #[proc_macro]
 pub fn xtrash(input: TokenStream) -> TokenStream {
-    
-    // Parse the input as an integer literal
     let repeat_count = parse_macro_input!(input as LitInt);
 
-    // Get the number of times to repeat
     let repeat_count: usize = repeat_count.base10_parse().expect("Failed to parse integer");
 
     let mut rng = rand::thread_rng();
 
-    // Generate the repeated print statements
     let mut repeated_code = quote! {};
 
     for _ in 0..repeat_count {
@@ -185,10 +179,8 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn xanti_dbg(input: TokenStream) -> TokenStream {
-    // Parse the input into a Rust block of code
     let input_block = parse_macro_input!(input as Expr);
 
-    // Inject timing code using quote
     let output = quote! {
         {   
             xtrash!(4);
@@ -230,12 +222,9 @@ pub fn xanti_dbg(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
-    
-    // Parse the input as a string literal
     let input = parse_macro_input!(input as LitStr);
     let path = input.value();
     
-    // Read the file at compile time
     let bytes = match fs::read(format!("src/{}", &path)) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -248,14 +237,12 @@ pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
         }
     };
     
-    // Convert the byte vector into a byte array expression
     let mut rng = rand::thread_rng();
     let key = rng.gen_range(0x10..=0xEE);
     let bytes: Vec<u8> = bytes.iter().map(|c| (*c as u8 ^ key) as u8).collect();
     let bytes = bytes.as_slice();
     let bytes_lit = syn::LitByteStr::new(&bytes, input.span());
     
-    // Generate the output code
     let expanded = quote! {
         {
             let encrypted = #bytes_lit;
@@ -269,28 +256,24 @@ pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn xfn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Parse the attribute arguments (e.g., `#[xfn(4)]`)
     let attr_args = parse_macro_input!(attr as AttributeArgs);
     let trash_amount: usize = match attr_args.as_slice() {
         [syn::NestedMeta::Lit(syn::Lit::Int(lit))] => lit.base10_parse().unwrap(),
         _ => panic!("Expected a single integer argument, e.g., #[xfn(4)]"),
     };
 
-    // Parse the input function
     let input_fn = parse_macro_input!(item as ItemFn);
     let vis = input_fn.vis;
     let sig = input_fn.sig;
 
-    // Extract the function body (block)
     let mut block = input_fn.block;
 
-    // Modify the body by adding `xtrash!(amount)` before each statement
     let modified_stmts: Vec<syn::Stmt> = block
         .stmts
         .into_iter()
         .flat_map(|stmt| {
             let xtrash_stmt = {
-                let amount = trash_amount; // Use the parsed amount here
+                let amount = trash_amount;
                 quote! {
                     {
                         use std::arch::asm;
@@ -298,14 +281,12 @@ pub fn xfn(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
             };
-            vec![syn::parse2(xtrash_stmt).unwrap(), stmt] // Insert `xtrash!(amount)` before the original statement
+            vec![syn::parse2(xtrash_stmt).unwrap(), stmt]
         })
         .collect();
 
-    // Replace the original statements with the modified ones
     block.stmts = modified_stmts;
 
-    // Generate the output function with the modified body
     let output = quote! {
         #vis #sig #block
     };
