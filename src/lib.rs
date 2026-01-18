@@ -75,8 +75,13 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                         "cmp rax, 0x7432",
                         "jne 2f",
                         concat!(".global ", #label_name, "\n", #label_name, ":"),
-                        "add rax, 0x10",
-                        "jmp rax",
+                        "push rax",
+                        "sub rsp, 0x11",
+                        "add rax, 0x100",
+                        "call rax",
+                        "add rsp, 0x09",
+                        "pop rax",
+                        "ret",
                         "2:"
 
                     );
@@ -96,7 +101,13 @@ pub fn xtrash(input: TokenStream) -> TokenStream {
                             "cmp rax, 0x1488ffcc",
                             "jne 2f",
                             concat!(stringify!(#label_name), ":"),
-                            "int3",
+                            "push rax",
+                            "sub rsp, 0x8",
+                            "add rax, 0x54",
+                            "call rax",
+                            "add rsp, 0x4",
+                            "pop rax",
+                            "ret",
                             "jmp rax",
                             "2:"
 
