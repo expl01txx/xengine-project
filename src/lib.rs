@@ -18,11 +18,55 @@ use syn::{parse_macro_input, parse_quote, Expr, ItemFn, LitByteStr, LitInt, LitS
 #[proc_macro]
 pub fn xstr(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitStr);
-    let bytes = obfuscated_bytes(input.value().as_bytes(), input.span());
+    obfuscated_string(input.value().as_bytes(), input.span()).into()
+}
 
+fn obfuscated_string(bytes: &[u8], span: proc_macro2::Span) -> TokenStream2 {
+    let bytes = obfuscated_bytes(bytes, span);
     quote! {
         ::std::string::String::from_utf8(#bytes)
-            .expect("xstr! must decode to the original UTF-8")
+            .expect("xengine encoded text must decode to valid UTF-8")
+    }
+}
+
+/// Obfuscates a byte string literal at compile time and returns an owned `Vec<u8>`.
+///
+/// ```
+/// use xengine::xbytes;
+///
+/// assert_eq!(xbytes!(b"\0\xFF"), [0, 255]);
+/// ```
+#[proc_macro]
+pub fn xbytes(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as LitByteStr);
+    obfuscated_bytes(&input.value(), input.span()).into()
+}
+
+/// Obfuscates a UTF-8 string literal and returns an owned `CString` for FFI.
+/// Interior NUL bytes cause a compile-time error.
+///
+/// ```
+/// use xengine::xcstr;
+///
+/// assert_eq!(xcstr!("xengine").as_bytes_with_nul(), b"xengine\0");
+/// ```
+///
+/// ```compile_fail
+/// xengine::xcstr!("embedded\0NUL");
+/// ```
+#[proc_macro]
+pub fn xcstr(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as LitStr);
+    let text = input.value();
+    if let Some(position) = text.bytes().position(|byte| byte == 0) {
+        return syn::Error::new(input.span(), format!("NUL byte at byte offset {position}"))
+            .into_compile_error()
+            .into();
+    }
+
+    let bytes = obfuscated_bytes(text.as_bytes(), input.span());
+    quote! {
+        ::std::ffi::CString::new(#bytes).expect("xengine encoded C string must be NUL-free")
     }
     .into()
 }
@@ -34,13 +78,29 @@ pub fn xstr(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn xinclude_bytes(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitStr);
-    expand_include_bytes(&input)
+    expand_include(&input, IncludeKind::Bytes)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
 
+/// Obfuscates a UTF-8 text file at compile time and returns an owned `String`.
+/// Invalid UTF-8 causes a compile-time error. File paths and Cargo rebuild
+/// tracking work the same way as in `xinclude_bytes!`.
+#[proc_macro]
+pub fn xinclude_str(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as LitStr);
+    expand_include(&input, IncludeKind::Text)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+enum IncludeKind {
+    Bytes,
+    Text,
+}
+
 /// Use an anonymous constant to register the source file in rustc's dep-info.
-fn expand_include_bytes(input: &LitStr) -> syn::Result<TokenStream2> {
+fn expand_include(input: &LitStr, kind: IncludeKind) -> syn::Result<TokenStream2> {
     let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")
         .ok_or_else(|| syn::Error::new(input.span(), "CARGO_MANIFEST_DIR is unavailable"))?;
     let path = PathBuf::from(manifest_dir).join("src").join(input.value());
@@ -53,11 +113,22 @@ fn expand_include_bytes(input: &LitStr) -> syn::Result<TokenStream2> {
     let tracked_path = path
         .to_str()
         .ok_or_else(|| syn::Error::new(input.span(), "included file path must be valid UTF-8"))?;
-    let bytes = obfuscated_bytes(&bytes, input.span());
+    let value = match kind {
+        IncludeKind::Bytes => obfuscated_bytes(&bytes, input.span()),
+        IncludeKind::Text => {
+            std::str::from_utf8(&bytes).map_err(|error| {
+                syn::Error::new(
+                    input.span(),
+                    format!("'{}' is not valid UTF-8: {error}", path.display()),
+                )
+            })?;
+            obfuscated_string(&bytes, input.span())
+        }
+    };
 
     Ok(quote! {{
         const _: &[u8] = ::core::include_bytes!(#tracked_path);
-        #bytes
+        #value
     }})
 }
 

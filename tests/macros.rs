@@ -1,4 +1,4 @@
-use xengine::{xanti_dbg, xfn, xinclude_bytes, xstr, xtrash};
+use xengine::{xanti_dbg, xbytes, xcstr, xfn, xinclude_bytes, xinclude_str, xstr, xtrash};
 
 #[test]
 fn string_literals_round_trip() {
@@ -9,20 +9,51 @@ fn string_literals_round_trip() {
 }
 
 #[test]
+fn byte_string_literals_round_trip() {
+    assert!(xbytes!(b"").is_empty());
+    assert_eq!(xbytes!(b"\x00\x80\xff"), [0, 128, 255]);
+    assert_eq!(xbytes!(br"raw\bytes"), br"raw\bytes");
+}
+
+#[test]
+fn c_string_literals_have_one_trailing_nul() {
+    assert_eq!(xcstr!("").as_bytes_with_nul(), b"\0");
+    assert_eq!(xcstr!("café").as_bytes_with_nul(), "café\0".as_bytes());
+}
+
+#[test]
 fn generated_executable_omits_contiguous_plaintext() {
     let string: String = xstr!("xengine-string-a6f91bf542");
-    let bytes: Vec<u8> = xinclude_bytes!("../tests/fixtures/embedded data.bin");
+    let file_bytes: Vec<u8> = xinclude_bytes!("../tests/fixtures/embedded data.bin");
+    let text: String = xinclude_str!("../tests/fixtures/message.txt");
+    let c_string: std::ffi::CString = xcstr!("xengine-cstr-184c8df72b");
+    let literal_bytes: Vec<u8> = xbytes!(b"xengine-bytes-fd56422a01");
     let string_marker = reverse(b"245fb19f6a-gnirts-enignex");
     let file_marker = reverse(b"f56c38a625-erutxif-ENIGNEX");
+    let text_marker = reverse(b"a0fe252d4a-txet-enignex");
+    let c_string_marker = reverse(b"b27fd8c481-rtsc-enignex");
+    let literal_bytes_marker = reverse(b"10a22465df-setyb-enignex");
     assert_eq!(string.as_bytes(), string_marker);
+    assert_eq!(c_string.as_bytes(), c_string_marker);
+    assert_eq!(literal_bytes, literal_bytes_marker);
+
+    let (text_prefix, text_suffix) = text.as_bytes().split_at(text_marker.len());
+    assert_eq!(text_prefix, text_marker);
+    assert_eq!(text_suffix, " café 🦀".as_bytes());
 
     let mut expected_bytes = vec![0, 128, 255];
     expected_bytes.extend_from_slice(&file_marker);
     expected_bytes.extend_from_slice(&[10, 13, 0, 254]);
-    assert_eq!(bytes, expected_bytes);
+    assert_eq!(file_bytes, expected_bytes);
 
     let executable = std::fs::read(std::env::current_exe().unwrap()).unwrap();
-    for marker in [&string_marker, &file_marker] {
+    for marker in [
+        &string_marker,
+        &file_marker,
+        &text_marker,
+        &c_string_marker,
+        &literal_bytes_marker,
+    ] {
         assert!(!executable
             .windows(marker.len())
             .any(|window| window == marker));
@@ -36,6 +67,7 @@ fn reverse(bytes: &[u8]) -> Vec<u8> {
 #[test]
 fn empty_files_round_trip() {
     assert!(xinclude_bytes!("../tests/fixtures/empty.bin").is_empty());
+    assert!(xinclude_str!("../tests/fixtures/empty.bin").is_empty());
 }
 
 #[test]
